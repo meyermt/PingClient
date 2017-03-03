@@ -1,10 +1,7 @@
 package com.meyermt.api;
 
 import java.io.IOException;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.InetAddress;
-import java.net.SocketException;
+import java.net.*;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
@@ -23,6 +20,8 @@ public class Pinger {
     private final int count;
     private final int period;
     private final int timeout;
+    private int receiveCounter = 0;
+    private List<Long> delays = new ArrayList<>();
     private LocalDateTime overallStart;
     private LocalDateTime overallEnd;
 
@@ -32,33 +31,53 @@ public class Pinger {
         this.count = count;
         this.period = period;
         this.timeout = timeout;
-        // thread pool same size as total count in case they all timeout
+        // thread pool same size as total count in case they all timeout and period is much less than timeout
         this.executor = new ScheduledThreadPoolExecutor(count);
     }
 
     private class PingerTask implements Runnable {
-        private int sequenceNumber = 0;
+        private int sequenceNumber = 1;
         public void run() {
             try {
+                // set up new client socket
                 DatagramSocket client = new DatagramSocket();
+                client.setSoTimeout(timeout);
+
+                // document starting time
                 LocalDateTime sendingTime = LocalDateTime.now();
-                if (sequenceNumber == 0) {
+                if (sequenceNumber == 1) {
                     overallStart = sendingTime;
                 }
+
+                // put together a packet
                 String payload = "PING " + sequenceNumber + " " + sendingTime + "\r\n";
                 byte[] payloadBytes = payload.getBytes();
                 DatagramPacket packet = new DatagramPacket(payloadBytes, payloadBytes.length, ip, port);
-                client.send(packet);
 
+                // send and try receiving packet
+                client.send(packet);
                 packet = new DatagramPacket(payloadBytes, payloadBytes.length);
                 client.receive(packet);
+
                 LocalDateTime receivingTime = LocalDateTime.now();
-                String received = new String(packet.getData(), 0, packet.getLength());
-                System.out.println("received this: " + received);
+                long delay = sendingTime.until(receivingTime, ChronoUnit.MILLIS);
+                // print out receive
+                System.out.println("PONG " + ip.getHostAddress() + ": seq=" + sequenceNumber + " time=" + delay + " ms");
 
-                // then print the stuff
+                // collect for stats
+                delays.add(delay);
+                receiveCounter++;
 
-                if (++sequenceNumber == count) {
+                // end executing at the count
+                if (++sequenceNumber > count) {
+                    overallEnd = receivingTime;
+                    future.cancel(false);
+                }
+
+            } catch (SocketTimeoutException e) {
+                // if timed out, still need to get the time in case this was last transaction
+                LocalDateTime receivingTime = LocalDateTime.now();
+                if (++sequenceNumber > count) {
                     overallEnd = receivingTime;
                     future.cancel(false);
                 }
@@ -68,21 +87,26 @@ public class Pinger {
         }
     }
 
-    public List<Map<String, String>> pingAndRetrieve() {
-        try {
-            executor.setContinueExistingPeriodicTasksAfterShutdownPolicy(true);
-            future = executor.scheduleAtFixedRate(new PingerTask(), 0, period, TimeUnit.MILLISECONDS);
-            // should be more than enough timeout time. Also threads will continue even if shutdown happens
-            int shutdownTimeout = (period * count) + (timeout * count) + period;
-            executor.awaitTermination(shutdownTimeout, TimeUnit.MILLISECONDS);
-            executor.shutdown();
-        } catch (InterruptedException e) {
-
+    public void pingAndRetrieve() {
+        System.out.println("PING " + ip.getHostAddress());
+        executor.setContinueExistingPeriodicTasksAfterShutdownPolicy(true);
+        List<ScheduledFuture<?>> futures = new ArrayList<>();
+        futures.add(executor.scheduleAtFixedRate(new PingerTask(), 0, period, TimeUnit.MILLISECONDS));
+        executor.shutdown();
+        while (!executor.isTerminated()) {
+            // sit and spin while we process
         }
-        return Collections.emptyList();
     }
 
     public long getOverallDiffInMillis() {
         return overallStart.until(overallEnd, ChronoUnit.MILLIS);
+    }
+
+    public List<Long> getDelays() {
+        return delays;
+    }
+
+    public int getSuccessCount() {
+        return receiveCounter;
     }
 }

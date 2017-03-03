@@ -40,12 +40,28 @@ public class Main {
             InetAddress serverIp = InetAddress.getByName(ip);
             Pinger pinger = new Pinger(serverIp, port, count, period, timeout);
             pinger.pingAndRetrieve();
-            System.out.println("got back to here");
-            //sender.scheduleRequests(count, period, timeout);
+            writeOutput(ip, count, pinger);
         } catch(UnknownHostException e) {
             e.printStackTrace();
             System.out.println("Exception opening socket");
             System.exit(1);
         }
+    }
+
+    private static void writeOutput(String ip, int count, Pinger pinger) {
+        System.out.println("--- " + ip + " ping statistics ---");
+        int received = pinger.getSuccessCount();
+        int loss = ((count - received) / count) * 100;
+        long totalTime = pinger.getOverallDiffInMillis();
+        System.out.println(count + " transmitted, " + received + " received, " + loss + "% loss, time " + totalTime + "ms");
+        long fastest = pinger.getDelays().stream()
+                .mapToLong(Long::longValue).min().orElseThrow(() -> new RuntimeException("Impossibly, no long found. Failing program"));
+        long slowest = pinger.getDelays().stream()
+                .mapToLong(Long::longValue).max().orElseThrow(() -> new RuntimeException("Impossibly, no long found. Failing program"));
+        Double avg = pinger.getDelays().stream()
+                .mapToLong(Long::longValue).average().orElseThrow(() -> new RuntimeException("Impossibly, no long found. Failing program"));
+        // easier to read ints
+        int intAvg = avg.intValue();
+        System.out.println("rtt min/avg/max = " + fastest + "/" + intAvg + "/" + slowest);
     }
 }
