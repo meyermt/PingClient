@@ -59,7 +59,7 @@ public class Main {
     private static void writeOutput(String ip, int count, Pinger pinger) {
         System.out.println("--- " + ip + " ping statistics ---");
         int received = pinger.getSuccessCount();
-        int loss = ((count - received) / count) * 100;
+        int loss = ((count - received) * 100) / count;
         long totalTime = pinger.getOverallDiffInMillis();
         System.out.println(count + " transmitted, " + received + " received, " + loss + "% loss, time " + totalTime + "ms");
         long fastest = pinger.getDelays().stream()
