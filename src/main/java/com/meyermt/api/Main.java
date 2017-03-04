@@ -4,15 +4,20 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 
 /**
- * Created by michaelmeyer on 2/26/17.
+ * Main driver for the ping server program. Handles incoming args and hands off pinging to the Pinger.
  */
 public class Main {
 
     private static final String IP_ARG = "--server_ip", PORT_ARG = "--server_port", COUNT_ARG = "--count", PERIOD_ARG = "--period",
                             TIMEOUT_ARG = "--timeout";
 
+    /**
+     * The entry point of application. All args must be entered in the right order, flags followed by space and then arg.
+     * Application exits with instructional message if entered incorrectly.
+     *
+     * @param args the input arguments
+     */
     public static void main(String[] args) {
-        // Should have exactly 5 space delimited args (10 with flags) exactly correct order
         String ip = "";
         int port = 0;
         int count = 0;
@@ -33,7 +38,7 @@ public class Main {
     }
 
     /*
-        Starts the web server. Continuous loop that listens for clients. For each client connection, a new thread is run.
+        Sets up client Pinger and passes control onto write output
      */
     private static void runClient(String ip, int port, int count, int period, int timeout) {
         try {
@@ -48,6 +53,9 @@ public class Main {
         }
     }
 
+    /*
+        Writes output by gathering state from pinger after pinger has run.
+     */
     private static void writeOutput(String ip, int count, Pinger pinger) {
         System.out.println("--- " + ip + " ping statistics ---");
         int received = pinger.getSuccessCount();
@@ -55,11 +63,11 @@ public class Main {
         long totalTime = pinger.getOverallDiffInMillis();
         System.out.println(count + " transmitted, " + received + " received, " + loss + "% loss, time " + totalTime + "ms");
         long fastest = pinger.getDelays().stream()
-                .mapToLong(Long::longValue).min().orElseThrow(() -> new RuntimeException("Impossibly, no long found. Failing program"));
+                .mapToLong(Long::longValue).min().orElse(0);
         long slowest = pinger.getDelays().stream()
-                .mapToLong(Long::longValue).max().orElseThrow(() -> new RuntimeException("Impossibly, no long found. Failing program"));
+                .mapToLong(Long::longValue).max().orElse(0);
         Double avg = pinger.getDelays().stream()
-                .mapToLong(Long::longValue).average().orElseThrow(() -> new RuntimeException("Impossibly, no long found. Failing program"));
+                .mapToLong(Long::longValue).average().orElse(0);
         // easier to read ints
         int intAvg = avg.intValue();
         System.out.println("rtt min/avg/max = " + fastest + "/" + intAvg + "/" + slowest);
